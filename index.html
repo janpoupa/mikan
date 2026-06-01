@@ -5,77 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Ant Survival AR</title>
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-  <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
-    /* Simple desktop start hint overlay */
-    #hint {
-      position: fixed; left: 0; right: 0; bottom: 12px;
-      text-align: center; color: #fff; font-family: sans-serif;
-      font-size: 14px; opacity: 0.7; pointer-events: none; z-index: 9999;
-    }
-  </style>
-</head>
-<body>
-  <div id="hint">Put on the headset and press <b>ENTER AR</b>. On desktop: drag to look, WASD to move, click to shoot.</div>
 
-  <a-scene
-    game-manager
-    background="color: #101015"
-    renderer="colorManagement: true; alpha: true; antialias: true"
-    webxr="optionalFeatures: local-floor, bounded-floor, hand-tracking"
-    vr-mode-ui="enabled: true"
-    cursor="rayOrigin: mouse"
-    raycaster="objects: .clickable">
-
-    <!-- ===================== ASSETS ===================== -->
-    <a-assets>
-      <img id="mikanA" src="assets/mikan.png" crossorigin="anonymous" />
-      <img id="mikanB" src="assets/mikan2.png" crossorigin="anonymous" />
-    </a-assets>
-
-    <!-- ===================== PLAYER RIG ===================== -->
-    <a-entity id="rig" position="0 0 0">
-      <a-camera id="camera" position="0 1.6 0" look-controls wasd-controls="acceleration: 30">
-
-        <!-- Head-locked HUD (floats in front of the player) -->
-        <a-entity id="hud" position="0 -0.42 -1.1">
-          <!-- background bar -->
-          <a-plane width="1.0" height="0.16" color="#000000" opacity="0.45"
-                   material="shader: flat; transparent: true"></a-plane>
-          <a-text id="hud-score" value="SCORE 0" align="center" anchor="center"
-                  position="-0.33 0.025 0.01" width="1.2" color="#9be15d"></a-text>
-          <a-text id="hud-ammo" value="AMMO 10/10" align="center" anchor="center"
-                  position="0.34 0.025 0.01" width="1.2" color="#7fd1ff"></a-text>
-          <!-- lives label + hearts -->
-          <a-text value="LIVES" align="center" anchor="center"
-                  position="-0.05 -0.04 0.01" width="1.0" color="#ffffff"></a-text>
-          <a-entity id="hearts" position="0.12 -0.04 0.01"></a-entity>
-        </a-entity>
-
-        <!-- Damage flash (red full-view plane, hidden by default) -->
-        <a-plane id="damage-flash" position="0 0 -0.5" width="4" height="4"
-                 color="#ff0000" opacity="0" visible="false"
-                 material="shader: flat; transparent: true; depthTest: false"></a-plane>
-
-        <!-- Center messages (start / game over) -->
-        <a-entity id="message" position="0 0.15 -1.6">
-          <a-plane id="message-bg" width="1.5" height="0.9" color="#000000" opacity="0.6"
-                   material="shader: flat; transparent: true"></a-plane>
-          <a-text id="message-text" value="" align="center" anchor="center"
-                  baseline="center" position="0 0 0.01" width="2.2" color="#ffffff"></a-text>
-        </a-entity>
-      </a-camera>
-
-      <!-- Controllers: gun mounted on the RIGHT hand -->
-      <a-entity id="leftHand" oculus-touch-controls="hand: left" hand-controls="hand: left"></a-entity>
-      <a-entity id="rightHand" oculus-touch-controls="hand: right" gun></a-entity>
-    </a-entity>
-
-    <!-- Container for spawned ants -->
-    <a-entity id="ants"></a-entity>
-
-  </a-scene>
-
+  <!-- =============================================================
+       Game components are defined HERE (in <head>, before <a-scene>
+       is parsed) so A-Frame registers their tick() with the render
+       loop. Components defined after the scene is parsed silently
+       miss tick registration.
+       ============================================================= -->
   <script>
   // ============================================================
   //  CONFIG
@@ -146,7 +82,7 @@
     },
     init: function () {
       this.alive = true;
-      this.gm = this.el.sceneEl.components['game-manager'];
+      this.gm = this.el.sceneEl.gameManager;
       this.sprite = this.el.querySelector('.ant-sprite');
       this.frameTimer = 0;
       this.frameOn = false;
@@ -206,15 +142,15 @@
       this.el.addEventListener('triggerdown', fire);
       // desktop fallback: click anywhere shoots from the camera
       this.el.sceneEl.addEventListener('click', () => {
-        const gm = this.el.sceneEl.components['game-manager'];
+        const gm = this.el.sceneEl.gameManager;
         if (!gm) return;
         if (!gm.isPlaying()) { gm.start(); return; }
-        gm.tryShoot(this.el.sceneEl.camera ? this.getCameraEl() : this.el);
+        gm.tryShoot(this.getCameraEl());
       });
       // desktop fallback: space bar
       window.addEventListener('keydown', (e) => {
         if (e.code !== 'Space') return;
-        const gm = this.el.sceneEl.components['game-manager'];
+        const gm = this.el.sceneEl.gameManager;
         if (!gm) return;
         if (!gm.isPlaying()) { gm.start(); return; }
         gm.tryShoot(this.getCameraEl());
@@ -224,7 +160,7 @@
       return document.getElementById('camera');
     },
     fire: function () {
-      const gm = this.el.sceneEl.components['game-manager'];
+      const gm = this.el.sceneEl.gameManager;
       if (!gm) return;
       if (!gm.isPlaying()) { gm.start(); return; }
       gm.tryShoot(this.el);
@@ -279,6 +215,8 @@
   // ============================================================
   AFRAME.registerComponent('game-manager', {
     init: function () {
+      // expose globally so gun/ant components can reach the manager
+      this.el.sceneEl.gameManager = this;
       this.state = 'ready';        // ready | playing | over
       this.ants = [];
       this.antContainer = document.getElementById('ants');
@@ -294,12 +232,18 @@
       this.showMessage('ANT SURVIVAL\n\nPull the trigger to start\n(or click on desktop)');
       this.updateHUD();
 
+      // Belt-and-suspenders: make sure our per-frame tick is in the
+      // scene's behavior list even if this component was registered
+      // after the scene initialised. addBehavior is keyed by name so
+      // this is idempotent (won't double-register).
+      this.el.sceneEl.addBehavior(this);
+
       // make sure AR passthrough shows through (transparent clear)
-      this.el.addEventListener('enter-vr', () => {
-        if (this.el.is('ar-mode')) {
-          this.el.renderer.setClearAlpha(0);
-          const bg = this.el.getAttribute('background');
-          this.el.setAttribute('background', 'color: transparent');
+      const sceneEl = this.el.sceneEl;
+      sceneEl.addEventListener('enter-vr', () => {
+        if (sceneEl.is('ar-mode')) {
+          sceneEl.renderer.setClearAlpha(0);
+          sceneEl.setAttribute('background', 'color: transparent');
         }
       });
     },
@@ -416,6 +360,8 @@
       const toAnt = new THREE.Vector3();
 
       for (const ant of this.ants) {
+        const comp = ant.components.ant;
+        if (comp && !comp.alive) continue;       // already dying
         ant.object3D.getWorldPosition(toAnt);
         toAnt.sub(origin);
         const d = toAnt.length();
@@ -498,5 +444,78 @@
     }
   });
   </script>
+
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+    /* Simple desktop start hint overlay */
+    #hint {
+      position: fixed; left: 0; right: 0; bottom: 12px;
+      text-align: center; color: #fff; font-family: sans-serif;
+      font-size: 14px; opacity: 0.7; pointer-events: none; z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+  <div id="hint">Put on the headset and press <b>ENTER AR</b>. On desktop: drag to look, WASD to move, click to shoot.</div>
+
+  <a-scene
+    background="color: #101015"
+    renderer="colorManagement: true; alpha: true; antialias: true"
+    webxr="optionalFeatures: local-floor, bounded-floor, hand-tracking"
+    vr-mode-ui="enabled: true"
+    cursor="rayOrigin: mouse"
+    raycaster="objects: .clickable">
+
+    <!-- ===================== ASSETS ===================== -->
+    <a-assets>
+      <img id="mikanA" src="assets/mikan.png" crossorigin="anonymous" />
+      <img id="mikanB" src="assets/mikan2.png" crossorigin="anonymous" />
+    </a-assets>
+
+    <!-- ===================== PLAYER RIG ===================== -->
+    <a-entity id="rig" position="0 0 0">
+      <a-camera id="camera" position="0 1.6 0" look-controls wasd-controls="acceleration: 30">
+
+        <!-- Head-locked HUD (floats in front of the player) -->
+        <a-entity id="hud" position="0 -0.42 -1.1">
+          <!-- background bar -->
+          <a-plane width="1.0" height="0.16" color="#000000" opacity="0.45"
+                   material="shader: flat; transparent: true"></a-plane>
+          <a-text id="hud-score" value="SCORE 0" align="center" anchor="center"
+                  position="-0.33 0.025 0.01" width="1.2" color="#9be15d"></a-text>
+          <a-text id="hud-ammo" value="AMMO 10/10" align="center" anchor="center"
+                  position="0.34 0.025 0.01" width="1.2" color="#7fd1ff"></a-text>
+          <!-- lives label + hearts -->
+          <a-text value="LIVES" align="center" anchor="center"
+                  position="-0.05 -0.04 0.01" width="1.0" color="#ffffff"></a-text>
+          <a-entity id="hearts" position="0.12 -0.04 0.01"></a-entity>
+        </a-entity>
+
+        <!-- Damage flash (red full-view plane, hidden by default) -->
+        <a-plane id="damage-flash" position="0 0 -0.5" width="4" height="4"
+                 color="#ff0000" opacity="0" visible="false"
+                 material="shader: flat; transparent: true; depthTest: false"></a-plane>
+
+        <!-- Center messages (start / game over) -->
+        <a-entity id="message" position="0 0.15 -1.6">
+          <a-plane id="message-bg" width="1.5" height="0.9" color="#000000" opacity="0.6"
+                   material="shader: flat; transparent: true"></a-plane>
+          <a-text id="message-text" value="" align="center" anchor="center"
+                  baseline="center" position="0 0 0.01" width="2.2" color="#ffffff"></a-text>
+        </a-entity>
+      </a-camera>
+
+      <!-- Controllers: gun mounted on the RIGHT hand -->
+      <a-entity id="leftHand" oculus-touch-controls="hand: left" hand-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" oculus-touch-controls="hand: right" gun></a-entity>
+    </a-entity>
+
+    <!-- Container for spawned ants -->
+    <a-entity id="ants"></a-entity>
+
+    <!-- Game manager lives on a child entity so its tick() runs reliably -->
+    <a-entity id="gameManager" game-manager></a-entity>
+
+  </a-scene>
 </body>
 </html>

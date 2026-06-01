@@ -4,7 +4,7 @@
     {
       "name": "mikan",
       "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-ExecutionPolicy", "Bypass", "-File", "serve.ps1", "8080"],
+      "runtimeArgs": ["-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\jenda\\Documents\\GitHub\\mikan\\serve.ps1", "8080"],
       "port": 8080
     }
   ]
